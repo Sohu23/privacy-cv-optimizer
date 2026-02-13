@@ -38,7 +38,7 @@ export default function Home() {
 
   const redactedPreview = useMemo(() => {
     if (!resumeText) return null;
-    return redactPII(resumeText, { displayName: displayName || null });
+    return redactPII(resumeText, { displayName });
   }, [resumeText, displayName]);
 
   async function onPickPdf(file: File | null) {
@@ -61,8 +61,8 @@ export default function Home() {
     setBusy(true);
     try {
       // Client-side redaction first layer (server redacts again).
-      const redJob = redactPII(jobText, { displayName: displayName || null }).text;
-      const redResume = redactPII(resumeText, { displayName: displayName || null }).text;
+      const redJob = redactPII(jobText, { displayName }).text;
+      const redResume = redactPII(resumeText, { displayName }).text;
 
       const res = await fetch("/api/optimize", {
         method: "POST",
@@ -70,7 +70,7 @@ export default function Home() {
         body: JSON.stringify({
           jobText: redJob,
           resumeText: redResume,
-          displayName: displayName || null,
+          displayName,
         }),
       });
 
@@ -139,7 +139,7 @@ export default function Home() {
         <h2 className="text-lg font-medium">Privacy Controls</h2>
         <div className="mt-2 grid gap-3 md:grid-cols-2">
           <label className="text-sm">
-            Dein Name (optional, hilft beim 100% Maskieren):
+            Dein Name (Pflicht, damit wir ihn 100% maskieren können):
             <input
               className="mt-1 w-full rounded-md border p-2 text-sm"
               value={displayName}
@@ -163,7 +163,12 @@ export default function Home() {
         <button
           className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
           onClick={onSubmit}
-          disabled={busy || jobText.trim().length < 50 || resumeText.trim().length < 50}
+          disabled={
+            busy ||
+            displayName.trim().length < 2 ||
+            jobText.trim().length < 50 ||
+            resumeText.trim().length < 50
+          }
         >
           {busy ? "Arbeite…" : "Optimieren"}
         </button>

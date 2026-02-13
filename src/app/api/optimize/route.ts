@@ -8,8 +8,8 @@ export const runtime = "nodejs";
 const ReqSchema = z.object({
   resumeText: z.string().min(50),
   jobText: z.string().min(50),
-  // Optional, helps us deterministically redact the exact name.
-  displayName: z.string().optional().nullable(),
+  // Required (Privacy option A): allows deterministic redaction of the exact name.
+  displayName: z.string().min(2),
 });
 
 export async function POST(req: Request) {
@@ -23,8 +23,8 @@ export async function POST(req: Request) {
   }
 
   // Server-side redaction as a second layer (even if client already redacted).
-  const redactedResume = redactPII(parsed.data.resumeText, { displayName: parsed.data.displayName ?? null });
-  const redactedJob = redactPII(parsed.data.jobText, { displayName: parsed.data.displayName ?? null });
+  const redactedResume = redactPII(parsed.data.resumeText, { displayName: parsed.data.displayName });
+  const redactedJob = redactPII(parsed.data.jobText, { displayName: parsed.data.displayName });
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
   const content = completion.choices[0]?.message?.content ?? "{}";
 
   // Output sanitation: redact again, plus quick leakage checks.
-  const redactedOut = redactPII(content, { displayName: parsed.data.displayName ?? null }).text;
+  const redactedOut = redactPII(content, { displayName: parsed.data.displayName }).text;
   const leaks = assertNoPIILeakage(redactedOut);
 
   return NextResponse.json({
