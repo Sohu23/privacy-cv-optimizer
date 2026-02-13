@@ -139,6 +139,8 @@ export default function Home() {
         gaps_after: string[];
       }
   >(null);
+  const [baselineBeforeScore, setBaselineBeforeScore] = useState<number | null>(null);
+  const [baselineBeforeGaps, setBaselineBeforeGaps] = useState<string[] | null>(null);
   const [scoreStatus, setScoreStatus] = useState<"idle" | "loading" | "error">("idle");
 
   const [clarifications, setClarifications] = useState("");
@@ -192,6 +194,7 @@ export default function Home() {
     redBefore: string;
     parsed: OptimizeResponse;
     redClarifications?: string;
+    lockBefore?: boolean;
   }) {
     setScoreStatus("loading");
     try {
@@ -214,11 +217,23 @@ export default function Home() {
       }
 
       const s = await scoreRes.json();
+
+      const nextBeforeScore =
+        opts.lockBefore && baselineBeforeScore !== null ? baselineBeforeScore : s.score_before;
+      const nextBeforeGaps =
+        opts.lockBefore && baselineBeforeGaps !== null ? baselineBeforeGaps : (s.gaps_before || []);
+
+      // Persist baseline on first scoring (no clarifications).
+      if (!opts.lockBefore && baselineBeforeScore === null) {
+        setBaselineBeforeScore(s.score_before);
+        setBaselineBeforeGaps(s.gaps_before || []);
+      }
+
       setScore({
-        score_before: s.score_before,
+        score_before: nextBeforeScore,
         score_after: s.score_after,
         reasons_improved: s.reasons_improved || [],
-        gaps_before: s.gaps_before || [],
+        gaps_before: nextBeforeGaps,
         gaps_after: s.gaps_after || [],
       });
       setScoreStatus("idle");
@@ -260,7 +275,8 @@ export default function Home() {
       setResultObj(parsed);
       setStep(4);
 
-      await fetchScore({ redJob, redBefore: redResume, parsed });
+      // Initial score establishes the baseline (BEFORE) and AFTER for the first optimization.
+      await fetchScore({ redJob, redBefore: redResume, parsed, lockBefore: false });
     } catch {
       setError("Netzwerk-/Parsingfehler");
     } finally {
@@ -644,11 +660,13 @@ export default function Home() {
                       setResultRawJson(raw);
                       const parsed = JSON.parse(raw) as OptimizeResponse;
                       setResultObj(parsed);
+                      // Re-score after clarifications, but lock the BEFORE score to the original baseline.
                       await fetchScore({
                         redJob,
                         redBefore: redResume,
                         parsed,
                         redClarifications: redAnswers,
+                        lockBefore: true,
                       });
                     } catch {
                       setError("Netzwerk-/Parsingfehler");
