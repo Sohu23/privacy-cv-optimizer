@@ -59,6 +59,11 @@ export async function POST(req: Request) {
 
   const user = `Evaluate how well the resume matches the job ad.
 
+Interpretation rules:
+- RESUME_BEFORE: evaluate only based on JOB_AD and RESUME_BEFORE.
+- RESUME_AFTER: evaluate based on JOB_AD + RESUME_AFTER + CLARIFICATIONS.
+- When you list gaps_after, ensure each gap is truly unresolved after considering CLARIFICATIONS.
+
 Scoring rubric (0-100):
 - 0-20: mostly irrelevant
 - 21-40: some overlap but weak evidence
@@ -80,6 +85,9 @@ Constraints:
 - IMPORTANT: Clarifications apply ONLY to the AFTER evaluation. The BEFORE evaluation must ignore clarifications.
 - gaps_after are the concrete remaining reasons score_after is not 100.
 - If gaps_after is empty, score_after MUST be 100.
+- CRITICAL CONSISTENCY: A gap may ONLY be listed if the information is missing from BOTH RESUME_AFTER and CLARIFICATIONS.
+  - Example: If CLARIFICATIONS states German C2 / English C1, you must NOT list language uncertainty.
+  - If CLARIFICATIONS gives concrete examples of market/customer needs translation, you must NOT list "Unklare Verbindung zu Markt- und Kundenbedürfnissen".
 - Keep reasons/gaps concrete and short.
 - Do not mention any personal identifiers.
 

@@ -52,6 +52,11 @@ export async function POST(req: Request) {
 Task:
 - Improve the resume content for best fit to the job ad.
 - Use the clarifications (answers) to fill gaps, BUT do not invent anything not stated.
+- IMPORTANT: If the clarifications contain relevant evidence (e.g. market/customer work, F&E/engineering collaboration, language level, domain knowledge), you MUST reflect it explicitly in:
+  - summary (1-2 sentences)
+  - and at least 2 bullets
+  - and keywords if relevant.
+- If the candidate explicitly states they do NOT have dental/domain experience/knowledge, reflect that neutrally in summary (transferable skills), but do not fabricate.
 - Keep bullets short (1-2 lines), action + scope + outcome.
 - Neutral German (DACH). Avoid hype.
 
