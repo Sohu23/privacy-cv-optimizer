@@ -3,10 +3,36 @@
 import { useMemo, useState } from "react";
 import { redactPII } from "@/lib/redact";
 
-// pdfjs-dist in Next App Router: use dynamic import on client.
+type OptimizeResponse = {
+  target_role: string;
+  level: "junior" | "mid" | "senior" | "unknown";
+  requirements: string[];
+  evidence: string[];
+  gaps: string[];
+  bullets: string[];
+  summary: string;
+  keywords: string[];
+  questions: string[];
+};
+
+function classNames(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
+
+function downloadText(filename: string, text: string, mime = "application/json") {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function extractTextFromPdf(file: File): Promise<string> {
   const pdfjs = await import("pdfjs-dist");
-  // @ts-expect-error - worker entry path varies by bundler
   const workerSrc = (await import("pdfjs-dist/build/pdf.worker.mjs?url")).default;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (pdfjs as any).GlobalWorkerOptions.workerSrc = workerSrc;
@@ -29,17 +55,30 @@ async function extractTextFromPdf(file: File): Promise<string> {
 }
 
 export default function Home() {
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+
+  const [displayName, setDisplayName] = useState("");
   const [jobText, setJobText] = useState("");
   const [resumeText, setResumeText] = useState("");
-  const [displayName, setDisplayName] = useState("");
+
+  const [showRedactionPreview, setShowRedactionPreview] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<string>("");
   const [error, setError] = useState<string>("");
 
-  const redactedPreview = useMemo(() => {
-    if (!resumeText) return null;
+  const [resultRawJson, setResultRawJson] = useState<string>("");
+  const [resultObj, setResultObj] = useState<OptimizeResponse | null>(null);
+
+  const redactedResumePreview = useMemo(() => {
+    if (!resumeText.trim()) return null;
+    if (displayName.trim().length < 2) return null;
     return redactPII(resumeText, { displayName });
   }, [resumeText, displayName]);
+
+  const redactedJobPreview = useMemo(() => {
+    if (!jobText.trim()) return null;
+    if (displayName.trim().length < 2) return null;
+    return redactPII(jobText, { displayName });
+  }, [jobText, displayName]);
 
   async function onPickPdf(file: File | null) {
     if (!file) return;
@@ -48,8 +87,11 @@ export default function Home() {
     try {
       const extracted = await extractTextFromPdf(file);
       setResumeText(extracted);
+      setStep(3);
     } catch {
-      setError("PDF konnte nicht gelesen werden. (Hinweis: Scan-PDFs ohne Text funktionieren oft nicht.)");
+      setError(
+        "PDF konnte nicht gelesen werden. Hinweis: Scan-PDFs (nur Bilder) funktionieren oft nicht.",
+      );
     } finally {
       setBusy(false);
     }
@@ -57,10 +99,10 @@ export default function Home() {
 
   async function onSubmit() {
     setError("");
-    setResult("");
+    setResultRawJson("");
+    setResultObj(null);
     setBusy(true);
     try {
-      // Client-side redaction first layer (server redacts again).
       const redJob = redactPII(jobText, { displayName }).text;
       const redResume = redactPII(resumeText, { displayName }).text;
 
@@ -77,123 +119,372 @@ export default function Home() {
       const json = await res.json();
       if (!res.ok) {
         setError(json?.error || "Fehler");
-        if (json?.redacted) {
-          setResult(JSON.stringify(json.redacted, null, 2));
-        }
         return;
       }
 
-      setResult(json.resultJson || "");
+      const raw = String(json.resultJson || "{}");
+      setResultRawJson(raw);
+      const parsed = JSON.parse(raw) as OptimizeResponse;
+      setResultObj(parsed);
+      setStep(4);
     } catch {
-      setError("Netzwerkfehler");
+      setError("Netzwerk-/Parsingfehler");
     } finally {
       setBusy(false);
     }
   }
 
+  const canGoStep2 = displayName.trim().length >= 2;
+  const canGoStep3 = canGoStep2 && jobText.trim().length >= 80;
+  const canOptimize = canGoStep3 && resumeText.trim().length >= 80;
+
   return (
     <main className="mx-auto max-w-5xl p-6">
       <header className="mb-6">
-        <h1 className="text-3xl font-semibold tracking-tight">Privacy-first CV Optimizer (MVP)</h1>
-        <p className="mt-2 text-sm text-neutral-600">
-          PDF wird <span className="font-medium">im Browser</span> zu Text extrahiert. Vor dem LLM werden
-          persönliche Daten (E-Mail/Telefon/Adresse/PLZ/Geburtsdatum & Name) maskiert.
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-medium tracking-wide text-neutral-500">CV OPTIMIZER</p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-neutral-900">
+              Privacy-first Bewerbungs-Optimierung
+            </h1>
+            <p className="mt-2 text-sm text-neutral-600">
+              Clean & corporate MVP. PDF wird lokal im Browser gelesen; personenbezogene Daten werden vor KI
+              maskiert.
+            </p>
+          </div>
+          <div className="hidden rounded-xl border bg-white px-4 py-3 text-xs text-neutral-600 md:block">
+            <p className="font-medium text-neutral-800">Privacy by design</p>
+            <ul className="mt-1 list-disc pl-4">
+              <li>PDF verlässt deinen Browser nicht</li>
+              <li>Name Pflicht → 100% maskiert</li>
+              <li>Straße & PLZ werden maskiert</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-xl border bg-neutral-50 p-4">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {[1, 2, 3, 4].map((n) => (
+              <div
+                key={n}
+                className={classNames(
+                  "flex items-center gap-2 rounded-full border px-3 py-1",
+                  step === n
+                    ? "border-neutral-900 bg-white text-neutral-900"
+                    : "border-neutral-200 bg-white text-neutral-500",
+                )}
+              >
+                <span
+                  className={classNames(
+                    "inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold",
+                    step === n ? "bg-neutral-900 text-white" : "bg-neutral-200 text-neutral-700",
+                  )}
+                >
+                  {n}
+                </span>
+                <span className="font-medium">
+                  {n === 1
+                    ? "Name"
+                    : n === 2
+                      ? "Job"
+                      : n === 3
+                        ? "CV"
+                        : "Ergebnis"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-xl border p-4">
-          <h2 className="text-lg font-medium">1) Jobanzeige</h2>
+      {error ? (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
+
+      {/* STEP 1 */}
+      {step === 1 ? (
+        <section className="rounded-2xl border bg-white p-6">
+          <h2 className="text-lg font-semibold text-neutral-900">Dein Name (Pflicht)</h2>
+          <p className="mt-1 text-sm text-neutral-600">
+            Wir nutzen ihn ausschließlich, um ihn zuverlässig zu maskieren (→ <code>[NAME_1]</code>) bevor
+            Text an das LLM geht.
+          </p>
+
+          <label className="mt-4 block text-sm font-medium text-neutral-800">
+            Vollständiger Name
+            <input
+              className="mt-2 w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-neutral-900"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Max Mustermann"
+              autoComplete="name"
+            />
+          </label>
+
+          <div className="mt-6 flex items-center justify-between gap-3">
+            <div className="text-xs text-neutral-500">
+              Maskiert werden: Name, E-Mail, Telefon, Straße, PLZ, DOB, URLs, IDs.
+            </div>
+            <button
+              className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              disabled={!canGoStep2}
+              onClick={() => setStep(2)}
+            >
+              Weiter
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {/* STEP 2 */}
+      {step === 2 ? (
+        <section className="rounded-2xl border bg-white p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-neutral-900">Jobanzeige</h2>
+              <p className="mt-1 text-sm text-neutral-600">
+                Füge den relevanten Teil der Anzeige ein (Aufgaben/Profil reichen). Optional kannst du später
+                eine zweite Anzeige testen.
+              </p>
+            </div>
+            <button
+              className="text-sm font-medium text-neutral-700 underline"
+              onClick={() => setStep(1)}
+            >
+              Zurück
+            </button>
+          </div>
+
           <textarea
-            className="mt-2 h-56 w-full rounded-md border p-2 text-sm"
+            className="mt-4 h-64 w-full rounded-md border p-3 text-sm outline-none focus:border-neutral-900"
             placeholder="Jobanzeige hier einfügen…"
             value={jobText}
             onChange={(e) => setJobText(e.target.value)}
           />
-        </div>
 
-        <div className="rounded-xl border p-4">
-          <h2 className="text-lg font-medium">2) Lebenslauf</h2>
-          <div className="mt-2 flex flex-col gap-2">
-            <label className="text-sm">
-              PDF Upload (local parsing):
+          <div className="mt-6 flex items-center justify-between gap-3">
+            <div className="text-xs text-neutral-500">Tipp: je konkreter Anforderungen, desto besser.</div>
+            <button
+              className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              disabled={!canGoStep3}
+              onClick={() => setStep(3)}
+            >
+              Weiter
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {/* STEP 3 */}
+      {step === 3 ? (
+        <section className="rounded-2xl border bg-white p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-neutral-900">Lebenslauf</h2>
+              <p className="mt-1 text-sm text-neutral-600">
+                PDF Upload (lokal im Browser) oder Text einfügen. Scan-PDFs ohne Text funktionieren meist
+                nicht.
+              </p>
+            </div>
+            <button
+              className="text-sm font-medium text-neutral-700 underline"
+              onClick={() => setStep(2)}
+            >
+              Zurück
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="rounded-xl border p-4">
+              <p className="text-sm font-medium text-neutral-900">PDF Upload</p>
               <input
-                className="mt-1 block w-full text-sm"
+                className="mt-3 block w-full text-sm"
                 type="file"
                 accept="application/pdf"
                 onChange={(e) => onPickPdf(e.target.files?.[0] ?? null)}
                 disabled={busy}
               />
+              <p className="mt-2 text-xs text-neutral-500">
+                Hinweis: Die PDF-Datei wird nur in deinem Browser verarbeitet und nicht an den Server
+                übertragen.
+              </p>
+            </div>
+
+            <div className="rounded-xl border p-4">
+              <p className="text-sm font-medium text-neutral-900">Oder Text einfügen</p>
+              <textarea
+                className="mt-3 h-40 w-full rounded-md border p-3 text-sm outline-none focus:border-neutral-900"
+                placeholder="CV Text hier einfügen…"
+                value={resumeText}
+                onChange={(e) => setResumeText(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <label className="flex items-center gap-2 text-sm text-neutral-700">
+              <input
+                type="checkbox"
+                checked={showRedactionPreview}
+                onChange={(e) => setShowRedactionPreview(e.target.checked)}
+              />
+              Redaction Preview anzeigen
             </label>
-            <textarea
-              className="h-40 w-full rounded-md border p-2 text-sm"
-              placeholder="…oder Text hier einfügen (falls PDF nicht geht)"
-              value={resumeText}
-              onChange={(e) => setResumeText(e.target.value)}
-            />
+
+            <button
+              className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              disabled={busy || !canOptimize}
+              onClick={onSubmit}
+            >
+              {busy ? "Arbeite…" : "Optimieren"}
+            </button>
           </div>
-        </div>
-      </section>
 
-      <section className="mt-4 rounded-xl border p-4">
-        <h2 className="text-lg font-medium">Privacy Controls</h2>
-        <div className="mt-2 grid gap-3 md:grid-cols-2">
-          <label className="text-sm">
-            Dein Name (Pflicht, damit wir ihn 100% maskieren können):
-            <input
-              className="mt-1 w-full rounded-md border p-2 text-sm"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Max Mustermann"
-            />
-          </label>
-          <div className="text-sm text-neutral-600">
-            <p>
-              Maskiert werden immer: <span className="font-medium">Name</span>, E-Mail, Telefon, Straße, PLZ,
-              DOB. Stadt/Region bleiben (Empfehlung).
-            </p>
-            <p className="mt-1">
-              Hinweis: Scan-PDFs (nur Bilder) können wir im MVP nicht zuverlässig auslesen.
-            </p>
+          {showRedactionPreview ? (
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="rounded-xl border p-4">
+                <p className="text-sm font-medium text-neutral-900">Jobanzeige (maskiert)</p>
+                <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-neutral-50 p-3 text-xs">
+                  {redactedJobPreview?.text || "(noch nichts)"}
+                </pre>
+              </div>
+              <div className="rounded-xl border p-4">
+                <p className="text-sm font-medium text-neutral-900">CV (maskiert)</p>
+                <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-neutral-50 p-3 text-xs">
+                  {redactedResumePreview?.text || "(noch nichts)"}
+                </pre>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* STEP 4 */}
+      {step === 4 && resultObj ? (
+        <section className="rounded-2xl border bg-white p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-neutral-900">Ergebnis</h2>
+              <p className="mt-1 text-sm text-neutral-600">
+                Zielrolle: <span className="font-medium">{resultObj.target_role}</span> · Level:{" "}
+                <span className="font-medium">{resultObj.level}</span>
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                className="rounded-md border px-3 py-2 text-sm font-medium text-neutral-800"
+                onClick={() => setStep(3)}
+              >
+                Neue Optimierung
+              </button>
+              <button
+                className="rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white"
+                onClick={() => downloadText("result.json", resultRawJson)}
+              >
+                JSON herunterladen
+              </button>
+            </div>
           </div>
-        </div>
-      </section>
 
-      <div className="mt-4 flex items-center gap-3">
-        <button
-          className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-          onClick={onSubmit}
-          disabled={
-            busy ||
-            displayName.trim().length < 2 ||
-            jobText.trim().length < 50 ||
-            resumeText.trim().length < 50
-          }
-        >
-          {busy ? "Arbeite…" : "Optimieren"}
-        </button>
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="rounded-xl border p-4">
+              <h3 className="text-sm font-semibold text-neutral-900">Kurzprofil</h3>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-800">{resultObj.summary}</p>
+              <div className="mt-3">
+                <button
+                  className="text-sm font-medium text-neutral-700 underline"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(resultObj.summary);
+                  }}
+                >
+                  Kopieren
+                </button>
+              </div>
+            </div>
 
-      <section className="mt-6 grid gap-4 md:grid-cols-2">
-        <div className="rounded-xl border p-4">
-          <h3 className="text-sm font-medium">Redacted Preview (Resume)</h3>
-          <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap rounded-md bg-neutral-50 p-3 text-xs">
-            {redactedPreview?.text || "(füge CV Text ein oder lade PDF hoch)"}
-          </pre>
-        </div>
-        <div className="rounded-xl border p-4">
-          <h3 className="text-sm font-medium">Result (JSON)</h3>
-          <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap rounded-md bg-neutral-50 p-3 text-xs">
-            {result || "(noch nichts)"}
-          </pre>
-        </div>
-      </section>
+            <div className="rounded-xl border p-4">
+              <h3 className="text-sm font-semibold text-neutral-900">Keywords</h3>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {resultObj.keywords.map((k) => (
+                  <span
+                    key={k}
+                    className="rounded-full border bg-white px-3 py-1 text-xs text-neutral-800"
+                  >
+                    {k}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-3">
+                <button
+                  className="text-sm font-medium text-neutral-700 underline"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(resultObj.keywords.join(", "));
+                  }}
+                >
+                  Kopieren
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-xl border p-4 md:col-span-2">
+              <h3 className="text-sm font-semibold text-neutral-900">Bulletpoints (CV)</h3>
+              <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-neutral-800">
+                {resultObj.bullets.map((b, idx) => (
+                  <li key={idx} className="leading-relaxed">
+                    {b}
+                  </li>
+                ))}
+              </ol>
+              <div className="mt-3">
+                <button
+                  className="text-sm font-medium text-neutral-700 underline"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(resultObj.bullets.join("\n"));
+                  }}
+                >
+                  Kopieren
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-xl border p-4">
+              <h3 className="text-sm font-semibold text-neutral-900">Gaps</h3>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-800">
+                {resultObj.gaps.map((g, idx) => (
+                  <li key={idx}>{g}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="rounded-xl border p-4">
+              <h3 className="text-sm font-semibold text-neutral-900">Fragen (für bessere Qualität)</h3>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-800">
+                {resultObj.questions.map((q, idx) => (
+                  <li key={idx}>{q}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="rounded-xl border p-4 md:col-span-2">
+              <details>
+                <summary className="cursor-pointer text-sm font-semibold text-neutral-900">
+                  Technische Ansicht (raw JSON)
+                </summary>
+                <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-md bg-neutral-50 p-3 text-xs">
+                  {resultRawJson}
+                </pre>
+              </details>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <footer className="mt-10 text-xs text-neutral-500">
         <p>
-          MVP Hinweis: Wir redigieren aggressiv, um Datenschutzrisiken zu minimieren. Für echte Nutzung:
-          Datenschutzerklärung + Löschkonzept + DPA mit Provider (OpenAI) prüfen.
+          Hinweis: MVP. Redaction ist aggressiv, um Datenschutzrisiken zu minimieren. Für Launch:
+          Datenschutzerklärung/Impressum/Verarbeitungsverzeichnis/DPA prüfen.
         </p>
       </footer>
     </main>
