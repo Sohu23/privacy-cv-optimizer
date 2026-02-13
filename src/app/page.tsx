@@ -37,12 +37,13 @@ function downloadText(filename: string, text: string, mime = "application/json")
 }
 
 async function downloadDocx(filename: string, r: OptimizeResponse) {
+  // "Sendefertig" export: no questions / no gaps. Those are shown in-app as optional improvement hints.
   const doc = new Document({
     sections: [
       {
         children: [
           new Paragraph({
-            text: "Bewerbungs-Optimierung (Privacy-first)",
+            text: "CV Optimizer – Ergebnis (sendefertig)",
             heading: HeadingLevel.TITLE,
           }),
           new Paragraph({
@@ -51,19 +52,13 @@ async function downloadDocx(filename: string, r: OptimizeResponse) {
               new TextRun(r.target_role || ""),
             ],
           }),
-          new Paragraph({
-            children: [
-              new TextRun({ text: "Level: ", bold: true }),
-              new TextRun(r.level || "unknown"),
-            ],
-          }),
           new Paragraph({ text: "" }),
 
           new Paragraph({ text: "Kurzprofil", heading: HeadingLevel.HEADING_1 }),
           new Paragraph({ text: r.summary || "" }),
           new Paragraph({ text: "" }),
 
-          new Paragraph({ text: "Bulletpoints (CV)", heading: HeadingLevel.HEADING_1 }),
+          new Paragraph({ text: "Optimierte Bulletpoints", heading: HeadingLevel.HEADING_1 }),
           ...r.bullets.map(
             (b) =>
               new Paragraph({
@@ -73,28 +68,8 @@ async function downloadDocx(filename: string, r: OptimizeResponse) {
           ),
           new Paragraph({ text: "" }),
 
-          new Paragraph({ text: "Keywords", heading: HeadingLevel.HEADING_1 }),
-          new Paragraph({ text: (r.keywords || []).join(", ") }),
-          new Paragraph({ text: "" }),
-
-          new Paragraph({ text: "Gaps", heading: HeadingLevel.HEADING_1 }),
-          ...(r.gaps || []).map(
-            (g) =>
-              new Paragraph({
-                text: g,
-                bullet: { level: 0 },
-              }),
-          ),
-          new Paragraph({ text: "" }),
-
-          new Paragraph({ text: "Fragen", heading: HeadingLevel.HEADING_1 }),
-          ...(r.questions || []).map(
-            (q) =>
-              new Paragraph({
-                text: q,
-                bullet: { level: 0 },
-              }),
-          ),
+          new Paragraph({ text: "Keywords (ATS)", heading: HeadingLevel.HEADING_1 }),
+          new Paragraph({ text: (r.keywords || []).join(", ") })
         ],
       },
     ],

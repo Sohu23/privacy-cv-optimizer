@@ -75,6 +75,10 @@ Return STRICT JSON with keys:
   "questions": string[]
 }
 
+IMPORTANT: The user expects a send-ready CV snippet. So:
+- Keep "questions" very short (max 3) and only when absolutely necessary.
+- Ensure "summary" and "bullets" are usable as-is.
+
 Now do the task.`;
 
   const completion = await client.chat.completions.create({
