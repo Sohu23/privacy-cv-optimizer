@@ -135,7 +135,8 @@ export default function Home() {
         score_before: number;
         score_after: number;
         reasons_improved: string[];
-        remaining_risks: string[];
+        gaps_before: string[];
+        gaps_after: string[];
       }
   >(null);
   const [scoreStatus, setScoreStatus] = useState<"idle" | "loading" | "error">("idle");
@@ -217,7 +218,8 @@ export default function Home() {
         score_before: s.score_before,
         score_after: s.score_after,
         reasons_improved: s.reasons_improved || [],
-        remaining_risks: s.remaining_risks || [],
+        gaps_before: s.gaps_before || [],
+        gaps_after: s.gaps_after || [],
       });
       setScoreStatus("idle");
     } catch {
@@ -569,7 +571,7 @@ export default function Home() {
                   <div>
                     <p className="text-xs font-medium text-neutral-700">Offen / Risiken</p>
                     <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-800">
-                      {score.remaining_risks.slice(0, 5).map((r, idx) => (
+                      {score.gaps_after.slice(0, 5).map((r, idx) => (
                         <li key={idx}>{r}</li>
                       ))}
                     </ul>
@@ -724,8 +726,9 @@ export default function Home() {
 
             <div className="rounded-xl border p-4">
               <h3 className="text-sm font-semibold text-neutral-900">Gaps</h3>
+              <p className="mt-1 text-xs text-neutral-500">(aus dem Match-Scoring; konsistent mit Risiken)</p>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-800">
-                {resultObj.gaps.map((g, idx) => (
+                {(score?.gaps_after || []).map((g, idx) => (
                   <li key={idx}>{g}</li>
                 ))}
               </ul>

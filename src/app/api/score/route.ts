@@ -21,7 +21,8 @@ const ScoreSchema = z.object({
   score_before: z.number().min(0).max(100),
   score_after: z.number().min(0).max(100),
   reasons_improved: z.array(z.string()).max(6),
-  remaining_risks: z.array(z.string()).max(6),
+  gaps_before: z.array(z.string()).max(6),
+  gaps_after: z.array(z.string()).max(6),
 });
 
 export async function POST(req: Request) {
@@ -70,12 +71,16 @@ Return STRICT JSON:
   "score_before": number,
   "score_after": number,
   "reasons_improved": string[],
-  "remaining_risks": string[]
+  "gaps_before": string[],
+  "gaps_after": string[]
 }
 
 Constraints:
 - Base your evaluation only on the provided texts.
-- Keep reasons/risks concrete and short.
+- IMPORTANT: Clarifications apply ONLY to the AFTER evaluation. The BEFORE evaluation must ignore clarifications.
+- gaps_after are the concrete remaining reasons score_after is not 100.
+- If gaps_after is empty, score_after MUST be 100.
+- Keep reasons/gaps concrete and short.
 - Do not mention any personal identifiers.
 
 BEGIN_JOB_AD
