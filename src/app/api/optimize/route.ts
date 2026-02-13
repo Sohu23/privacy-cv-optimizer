@@ -44,9 +44,38 @@ export async function POST(req: Request) {
   const client = new OpenAI({ apiKey });
 
   const system =
-    "You are a career assistant. IMPORTANT PRIVACY RULES: Never output personal identifiers (real names, emails, phone numbers, street addresses, postal codes, exact DOB). Use placeholders like [NAME_1], [EMAIL_1], [PHONE_1], [ADDRESS_1], [POSTAL_CODE_1], [DOB_1]. Do not invent facts. Only use the provided inputs.";
+    "You are a strict career assistant for DACH (German). IMPORTANT PRIVACY RULES: Never output personal identifiers (real names, emails, phone numbers, street addresses, postal codes, exact DOB). Use placeholders like [NAME_1], [EMAIL_1], [PHONE_1], [ADDRESS_1], [POSTAL_CODE_1], [DOB_1]. Ground everything in the provided inputs; do not invent facts. If info is missing, ask questions in the 'questions' array. Output must be valid JSON only.";
 
-  const user = `Job ad (redacted):\n${redactedJob.text}\n\nResume (redacted):\n${redactedResume.text}\n\nTask:\n1) Suggest 12 improved resume bullet points tailored to the job (ATS-friendly).\n2) Draft a concise professional summary (3-5 lines).\n3) List keywords/skills to add.\nReturn JSON with keys: bullets (string[]), summary (string), keywords (string[]).`;
+  const user = `You will receive a job ad and a resume for a DACH Product Manager candidate.
+
+Job ad (redacted):\n${redactedJob.text}\n\nResume (redacted):\n${redactedResume.text}\n
+First, extract structure.
+- Identify target role, level (junior/mid/senior), product domain, and top requirements.
+- Identify evidence in the resume that matches requirements.
+- Identify gaps where the resume lacks evidence.
+
+Then generate improvements WITHOUT inventing facts.
+Rules:
+- Do not fabricate metrics, employers, products, dates, or achievements.
+- If a bullet needs a metric but none exists, write the bullet WITHOUT numbers and add a note in "questions".
+- Keep bullets short (1-2 lines), action + scope + outcome.
+- Use neutral German (DACH). Avoid hype.
+- Never output personal identifiers; use placeholders.
+
+Return STRICT JSON with keys:
+{
+  "target_role": string,
+  "level": "junior"|"mid"|"senior"|"unknown",
+  "requirements": string[],
+  "evidence": string[],
+  "gaps": string[],
+  "bullets": string[],
+  "summary": string,
+  "keywords": string[],
+  "questions": string[]
+}
+
+Now do the task.`;
 
   const completion = await client.chat.completions.create({
     model: process.env.OPENAI_MODEL || "gpt-4o-mini",
