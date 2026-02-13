@@ -139,6 +139,9 @@ export default function Home() {
       }
   >(null);
 
+  const [clarifications, setClarifications] = useState("");
+  const [refineBusy, setRefineBusy] = useState(false);
+
   const redactedResumePreview = useMemo(() => {
     if (!resumeText.trim()) return null;
     if (displayName.trim().length < 2) return null;
@@ -165,6 +168,44 @@ export default function Home() {
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  function buildResumeAfter(parsed: OptimizeResponse) {
+    return [
+      parsed.summary,
+      "",
+      "Optimierte Bulletpoints:",
+      ...(parsed.bullets || []),
+      "",
+      "Keywords:",
+      (parsed.keywords || []).join(", "),
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  async function fetchScore(opts: { redJob: string; redBefore: string; parsed: OptimizeResponse }) {
+    const resumeAfter = buildResumeAfter(opts.parsed);
+    const scoreRes = await fetch("/api/score", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jobText: opts.redJob,
+        resumeBefore: opts.redBefore,
+        resumeAfter,
+        displayName,
+      }),
+    });
+
+    if (scoreRes.ok) {
+      const s = await scoreRes.json();
+      setScore({
+        score_before: s.score_before,
+        score_after: s.score_after,
+        reasons_improved: s.reasons_improved || [],
+        remaining_risks: s.remaining_risks || [],
+      });
     }
   }
 
@@ -200,39 +241,7 @@ export default function Home() {
       setResultObj(parsed);
       setStep(4);
 
-      // Fetch match score (before vs after). "After" is a stitched send-ready snippet.
-      const resumeAfter = [
-        parsed.summary,
-        "",
-        "Optimierte Bulletpoints:",
-        ...(parsed.bullets || []),
-        "",
-        "Keywords:",
-        (parsed.keywords || []).join(", "),
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      const scoreRes = await fetch("/api/score", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobText: redJob,
-          resumeBefore: redResume,
-          resumeAfter,
-          displayName,
-        }),
-      });
-
-      if (scoreRes.ok) {
-        const s = await scoreRes.json();
-        setScore({
-          score_before: s.score_before,
-          score_after: s.score_after,
-          reasons_improved: s.reasons_improved || [],
-          remaining_risks: s.remaining_risks || [],
-        });
-      }
+      await fetchScore({ redJob, redBefore: redResume, parsed });
     } catch {
       setError("Netzwerk-/Parsingfehler");
     } finally {
@@ -532,6 +541,80 @@ export default function Home() {
                     ))}
                   </ul>
                 </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Optional clarifications chat */}
+          {resultObj.questions?.length ? (
+            <div className="mt-4 rounded-xl border bg-white p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-sm font-semibold text-neutral-900">Rückfragen (optional)</p>
+                <p className="text-xs text-neutral-500">Temporär · max. 2000 Zeichen</p>
+              </div>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-800">
+                {resultObj.questions.slice(0, 3).map((q, idx) => (
+                  <li key={idx}>{q}</li>
+                ))}
+              </ul>
+
+              <label className="mt-3 block text-sm font-medium text-neutral-800">
+                Deine Antworten
+                <textarea
+                  className="mt-2 h-28 w-full rounded-md border p-3 text-sm outline-none focus:border-neutral-900"
+                  value={clarifications}
+                  onChange={(e) => setClarifications(e.target.value.slice(0, 2000))}
+                  placeholder="Kurze Antworten, stichpunktartig ist ok…"
+                />
+              </label>
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-neutral-500">
+                  Zeichen: {clarifications.length}/2000
+                </p>
+                <button
+                  className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  disabled={refineBusy || clarifications.trim().length < 5}
+                  onClick={async () => {
+                    setRefineBusy(true);
+                    setError("");
+                    try {
+                      const redJob = redactPII(jobText, { displayName }).text;
+                      const redResume = redactPII(resumeText, { displayName }).text;
+                      const redAnswers = redactPII(clarifications, { displayName }).text;
+
+                      const refineRes = await fetch("/api/refine", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          jobText: redJob,
+                          resumeText: redResume,
+                          displayName,
+                          questions: resultObj.questions.slice(0, 3),
+                          answers: redAnswers,
+                        }),
+                      });
+
+                      const rj = await refineRes.json();
+                      if (!refineRes.ok) {
+                        setError(rj?.error || "Fehler");
+                        return;
+                      }
+
+                      const raw = String(rj.resultJson || "{}");
+                      setResultRawJson(raw);
+                      const parsed = JSON.parse(raw) as OptimizeResponse;
+                      setResultObj(parsed);
+                      await fetchScore({ redJob, redBefore: redResume, parsed });
+                    } catch {
+                      setError("Netzwerk-/Parsingfehler");
+                    } finally {
+                      setRefineBusy(false);
+                    }
+                  }}
+                >
+                  {refineBusy ? "Wende an…" : "Antworten anwenden"}
+                </button>
               </div>
             </div>
           ) : null}
