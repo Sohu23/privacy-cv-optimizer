@@ -610,6 +610,29 @@ export default function Home() {
                 ))}
               </ul>
 
+              <div className="mt-3 rounded-lg border bg-neutral-50 p-3 text-xs text-neutral-700">
+                <p className="font-medium text-neutral-900">Antwort-Template (kurz & verwertbar)</p>
+                <p className="mt-1">
+                  Bitte antworte stichpunktartig. Ideal: <span className="font-medium">Kontext</span> ·{" "}
+                  <span className="font-medium">Rolle</span> · <span className="font-medium">Was genau</span>
+                  · <span className="font-medium">Ergebnis</span>.
+                </p>
+                <pre className="mt-2 whitespace-pre-wrap rounded bg-white p-2 text-[11px] leading-relaxed">
+{`Dental/Domain:
+- Kontext/Projekt:
+- Rolle:
+- Bezug zu Dental:
+- Zusammenarbeit (F&E/Engineering/Qualität):
+- Ergebnis:
+
+Markt/Kunde → Umsetzung:
+- Wie erhoben (Interviews/Workshops/Daten):
+- Artefakte (Anforderungen/Roadmap/Konzept):
+- Was wurde umgesetzt/entschieden:
+`}
+                </pre>
+              </div>
+
               <label className="mt-3 block text-sm font-medium text-neutral-800">
                 Deine Antworten
                 <textarea
