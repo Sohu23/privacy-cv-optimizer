@@ -129,6 +129,16 @@ export default function Home() {
   const [resultRawJson, setResultRawJson] = useState<string>("");
   const [resultObj, setResultObj] = useState<OptimizeResponse | null>(null);
 
+  const [score, setScore] = useState<
+    | null
+    | {
+        score_before: number;
+        score_after: number;
+        reasons_improved: string[];
+        remaining_risks: string[];
+      }
+  >(null);
+
   const redactedResumePreview = useMemo(() => {
     if (!resumeText.trim()) return null;
     if (displayName.trim().length < 2) return null;
@@ -162,6 +172,7 @@ export default function Home() {
     setError("");
     setResultRawJson("");
     setResultObj(null);
+    setScore(null);
     setBusy(true);
     try {
       const redJob = redactPII(jobText, { displayName }).text;
@@ -188,6 +199,40 @@ export default function Home() {
       const parsed = JSON.parse(raw) as OptimizeResponse;
       setResultObj(parsed);
       setStep(4);
+
+      // Fetch match score (before vs after). "After" is a stitched send-ready snippet.
+      const resumeAfter = [
+        parsed.summary,
+        "",
+        "Optimierte Bulletpoints:",
+        ...(parsed.bullets || []),
+        "",
+        "Keywords:",
+        (parsed.keywords || []).join(", "),
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const scoreRes = await fetch("/api/score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobText: redJob,
+          resumeBefore: redResume,
+          resumeAfter,
+          displayName,
+        }),
+      });
+
+      if (scoreRes.ok) {
+        const s = await scoreRes.json();
+        setScore({
+          score_before: s.score_before,
+          score_after: s.score_after,
+          reasons_improved: s.reasons_improved || [],
+          remaining_risks: s.remaining_risks || [],
+        });
+      }
     } catch {
       setError("Netzwerk-/Parsingfehler");
     } finally {
@@ -456,6 +501,40 @@ export default function Home() {
               </button>
             </div>
           </div>
+
+          {score ? (
+            <div className="mt-4 rounded-xl border bg-neutral-50 p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <p className="text-sm font-semibold text-neutral-900">Match zur Jobanzeige (0–100)</p>
+                <p className="text-sm text-neutral-700">
+                  Vorher: <span className="font-semibold">{score.score_before}</span> · Nachher:{" "}
+                  <span className="font-semibold">{score.score_after}</span> · Δ{" "}
+                  <span className="font-semibold">
+                    {score.score_after - score.score_before >= 0 ? "+" : ""}
+                    {score.score_after - score.score_before}
+                  </span>
+                </p>
+              </div>
+              <div className="mt-3 grid gap-4 md:grid-cols-2">
+                <div>
+                  <p className="text-xs font-medium text-neutral-700">Verbessert, weil</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-800">
+                    {score.reasons_improved.slice(0, 5).map((r, idx) => (
+                      <li key={idx}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-neutral-700">Offen / Risiken</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-800">
+                    {score.remaining_risks.slice(0, 5).map((r, idx) => (
+                      <li key={idx}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             <div className="rounded-xl border p-4">
