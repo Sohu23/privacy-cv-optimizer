@@ -186,7 +186,12 @@ export default function Home() {
       .join("\n");
   }
 
-  async function fetchScore(opts: { redJob: string; redBefore: string; parsed: OptimizeResponse }) {
+  async function fetchScore(opts: {
+    redJob: string;
+    redBefore: string;
+    parsed: OptimizeResponse;
+    redClarifications?: string;
+  }) {
     setScoreStatus("loading");
     try {
       const resumeAfter = buildResumeAfter(opts.parsed);
@@ -198,6 +203,7 @@ export default function Home() {
           resumeBefore: opts.redBefore,
           resumeAfter,
           displayName,
+          clarifications: opts.redClarifications,
         }),
       });
 
@@ -636,7 +642,12 @@ export default function Home() {
                       setResultRawJson(raw);
                       const parsed = JSON.parse(raw) as OptimizeResponse;
                       setResultObj(parsed);
-                      await fetchScore({ redJob, redBefore: redResume, parsed });
+                      await fetchScore({
+                        redJob,
+                        redBefore: redResume,
+                        parsed,
+                        redClarifications: redAnswers,
+                      });
                     } catch {
                       setError("Netzwerk-/Parsingfehler");
                     } finally {

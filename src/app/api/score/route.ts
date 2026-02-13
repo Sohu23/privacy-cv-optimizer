@@ -13,6 +13,8 @@ const ReqSchema = z.object({
   resumeBefore: z.string().min(50).max(MAX_RESUME),
   resumeAfter: z.string().min(50).max(MAX_RESUME),
   displayName: z.string().min(2),
+  // Optional clarifications provided by the user in the refine step.
+  clarifications: z.string().max(2000).optional(),
 });
 
 const ScoreSchema = z.object({
@@ -45,6 +47,9 @@ export async function POST(req: Request) {
   const job = redactPII(parsed.data.jobText, { displayName }).text;
   const before = redactPII(parsed.data.resumeBefore, { displayName }).text;
   const after = redactPII(parsed.data.resumeAfter, { displayName }).text;
+  const clarifications = parsed.data.clarifications
+    ? redactPII(parsed.data.clarifications, { displayName }).text
+    : "";
 
   const client = new OpenAI({ apiKey });
 
@@ -83,7 +88,11 @@ END_RESUME_BEFORE
 
 BEGIN_RESUME_AFTER
 ${after}
-END_RESUME_AFTER`;
+END_RESUME_AFTER
+
+BEGIN_CLARIFICATIONS
+${clarifications}
+END_CLARIFICATIONS`;
 
   const completion = await client.chat.completions.create({
     model: process.env.OPENAI_MODEL || "gpt-4o-mini",
