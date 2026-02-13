@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx";
 import { redactPII } from "@/lib/redact";
 
 type OptimizeResponse = {
@@ -19,8 +20,7 @@ function classNames(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
-function downloadText(filename: string, text: string, mime = "application/json") {
-  const blob = new Blob([text], { type: mime });
+function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -29,6 +29,79 @@ function downloadText(filename: string, text: string, mime = "application/json")
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+function downloadText(filename: string, text: string, mime = "application/json") {
+  const blob = new Blob([text], { type: mime });
+  downloadBlob(filename, blob);
+}
+
+async function downloadDocx(filename: string, r: OptimizeResponse) {
+  const doc = new Document({
+    sections: [
+      {
+        children: [
+          new Paragraph({
+            text: "Bewerbungs-Optimierung (Privacy-first)",
+            heading: HeadingLevel.TITLE,
+          }),
+          new Paragraph({
+            children: [
+              new TextRun({ text: "Zielrolle: ", bold: true }),
+              new TextRun(r.target_role || ""),
+            ],
+          }),
+          new Paragraph({
+            children: [
+              new TextRun({ text: "Level: ", bold: true }),
+              new TextRun(r.level || "unknown"),
+            ],
+          }),
+          new Paragraph({ text: "" }),
+
+          new Paragraph({ text: "Kurzprofil", heading: HeadingLevel.HEADING_1 }),
+          new Paragraph({ text: r.summary || "" }),
+          new Paragraph({ text: "" }),
+
+          new Paragraph({ text: "Bulletpoints (CV)", heading: HeadingLevel.HEADING_1 }),
+          ...r.bullets.map(
+            (b) =>
+              new Paragraph({
+                text: b,
+                bullet: { level: 0 },
+              }),
+          ),
+          new Paragraph({ text: "" }),
+
+          new Paragraph({ text: "Keywords", heading: HeadingLevel.HEADING_1 }),
+          new Paragraph({ text: (r.keywords || []).join(", ") }),
+          new Paragraph({ text: "" }),
+
+          new Paragraph({ text: "Gaps", heading: HeadingLevel.HEADING_1 }),
+          ...(r.gaps || []).map(
+            (g) =>
+              new Paragraph({
+                text: g,
+                bullet: { level: 0 },
+              }),
+          ),
+          new Paragraph({ text: "" }),
+
+          new Paragraph({ text: "Fragen", heading: HeadingLevel.HEADING_1 }),
+          ...(r.questions || []).map(
+            (q) =>
+              new Paragraph({
+                text: q,
+                bullet: { level: 0 },
+              }),
+          ),
+        ],
+      },
+    ],
+  });
+
+  const blob = await Packer.toBlob(doc);
+  downloadBlob(filename, blob);
 }
 
 async function extractTextFromPdf(file: File): Promise<string> {
@@ -380,10 +453,18 @@ export default function Home() {
                 Neue Optimierung
               </button>
               <button
+                className="rounded-md border px-3 py-2 text-sm font-medium text-neutral-800"
+                onClick={async () => {
+                  await downloadDocx("bewerbung-optimierung.docx", resultObj);
+                }}
+              >
+                Word (.docx)
+              </button>
+              <button
                 className="rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white"
                 onClick={() => downloadText("result.json", resultRawJson)}
               >
-                JSON herunterladen
+                JSON
               </button>
             </div>
           </div>
