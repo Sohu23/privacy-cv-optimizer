@@ -606,6 +606,9 @@ export default function Home() {
                   onClick={async () => {
                     setRefineBusy(true);
                     setError("");
+                    // Ensure user sees that the score will be recomputed (avoid displaying stale numbers).
+                    setScore(null);
+                    setScoreStatus("loading");
                     try {
                       const redJob = redactPII(jobText, { displayName }).text;
                       const redResume = redactPII(resumeText, { displayName }).text;
