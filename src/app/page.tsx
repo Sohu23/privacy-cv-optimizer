@@ -105,13 +105,26 @@ async function downloadDocx(filename: string, r: OptimizeResponse) {
 }
 
 async function extractTextFromPdf(file: File): Promise<string> {
-  const pdfjs = await import("pdfjs-dist");
-  const workerSrc = (await import("pdfjs-dist/build/pdf.worker.mjs?url")).default;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (pdfjs as any).GlobalWorkerOptions.workerSrc = workerSrc;
+  // Use the legacy build for broader bundler compatibility on Vercel/Next.
+  // This avoids relying on "?url" worker imports which can break depending on build tooling.
+  type PdfTextContent = { items: Array<{ str?: string } | unknown> };
+  type PdfPage = { getTextContent: () => Promise<PdfTextContent> };
+  type PdfDoc = { numPages: number; getPage: (n: number) => Promise<PdfPage> };
+
+  const pdfjsMod = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as {
+    getDocument: (args: { data: ArrayBuffer }) => { promise: Promise<PdfDoc> };
+    GlobalWorkerOptions: { workerSrc: string };
+  };
+
+  // Point workerSrc to the bundled worker via import.meta.url.
+  const workerSrc = new URL(
+    "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+    import.meta.url,
+  ).toString();
+  pdfjsMod.GlobalWorkerOptions.workerSrc = workerSrc;
 
   const data = await file.arrayBuffer();
-  const loadingTask = pdfjs.getDocument({ data });
+  const loadingTask = pdfjsMod.getDocument({ data });
   const pdf = await loadingTask.promise;
 
   let out = "";
