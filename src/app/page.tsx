@@ -138,6 +138,7 @@ export default function Home() {
         remaining_risks: string[];
       }
   >(null);
+  const [scoreStatus, setScoreStatus] = useState<"idle" | "loading" | "error">("idle");
 
   const [clarifications, setClarifications] = useState("");
   const [refineBusy, setRefineBusy] = useState(false);
@@ -186,19 +187,25 @@ export default function Home() {
   }
 
   async function fetchScore(opts: { redJob: string; redBefore: string; parsed: OptimizeResponse }) {
-    const resumeAfter = buildResumeAfter(opts.parsed);
-    const scoreRes = await fetch("/api/score", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jobText: opts.redJob,
-        resumeBefore: opts.redBefore,
-        resumeAfter,
-        displayName,
-      }),
-    });
+    setScoreStatus("loading");
+    try {
+      const resumeAfter = buildResumeAfter(opts.parsed);
+      const scoreRes = await fetch("/api/score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobText: opts.redJob,
+          resumeBefore: opts.redBefore,
+          resumeAfter,
+          displayName,
+        }),
+      });
 
-    if (scoreRes.ok) {
+      if (!scoreRes.ok) {
+        setScoreStatus("error");
+        return;
+      }
+
       const s = await scoreRes.json();
       setScore({
         score_before: s.score_before,
@@ -206,6 +213,9 @@ export default function Home() {
         reasons_improved: s.reasons_improved || [],
         remaining_risks: s.remaining_risks || [],
       });
+      setScoreStatus("idle");
+    } catch {
+      setScoreStatus("error");
     }
   }
 
@@ -214,6 +224,7 @@ export default function Home() {
     setResultRawJson("");
     setResultObj(null);
     setScore(null);
+    setScoreStatus("loading");
     setBusy(true);
     try {
       const redJob = redactPII(jobText, { displayName }).text;
@@ -511,37 +522,54 @@ export default function Home() {
             </div>
           </div>
 
-          {score ? (
+          {scoreStatus !== "idle" || score ? (
             <div className="mt-4 rounded-xl border bg-neutral-50 p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-3">
                 <p className="text-sm font-semibold text-neutral-900">Match zur Jobanzeige (0–100)</p>
-                <p className="text-sm text-neutral-700">
-                  Vorher: <span className="font-semibold">{score.score_before}</span> · Nachher:{" "}
-                  <span className="font-semibold">{score.score_after}</span> · Δ{" "}
-                  <span className="font-semibold">
-                    {score.score_after - score.score_before >= 0 ? "+" : ""}
-                    {score.score_after - score.score_before}
-                  </span>
+                {score ? (
+                  <p className="text-sm text-neutral-700">
+                    Vorher: <span className="font-semibold">{score.score_before}</span> · Nachher:{" "}
+                    <span className="font-semibold">{score.score_after}</span> · Δ{" "}
+                    <span className="font-semibold">
+                      {score.score_after - score.score_before >= 0 ? "+" : ""}
+                      {score.score_after - score.score_before}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-sm text-neutral-700">–</p>
+                )}
+              </div>
+
+              {scoreStatus === "loading" ? (
+                <p className="mt-2 text-sm text-neutral-600">Score wird neu berechnet…</p>
+              ) : null}
+              {scoreStatus === "error" ? (
+                <p className="mt-2 text-sm text-red-700">
+                  Score konnte nicht aktualisiert werden (temporärer Fehler). Bitte erneut optimieren oder
+                  Antworten nochmal anwenden.
                 </p>
-              </div>
-              <div className="mt-3 grid gap-4 md:grid-cols-2">
-                <div>
-                  <p className="text-xs font-medium text-neutral-700">Verbessert, weil</p>
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-800">
-                    {score.reasons_improved.slice(0, 5).map((r, idx) => (
-                      <li key={idx}>{r}</li>
-                    ))}
-                  </ul>
+              ) : null}
+
+              {score ? (
+                <div className="mt-3 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-medium text-neutral-700">Verbessert, weil</p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-800">
+                      {score.reasons_improved.slice(0, 5).map((r, idx) => (
+                        <li key={idx}>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-neutral-700">Offen / Risiken</p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-800">
+                      {score.remaining_risks.slice(0, 5).map((r, idx) => (
+                        <li key={idx}>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-medium text-neutral-700">Offen / Risiken</p>
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-800">
-                    {score.remaining_risks.slice(0, 5).map((r, idx) => (
-                      <li key={idx}>{r}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
+              ) : null}
             </div>
           ) : null}
 
